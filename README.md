@@ -26,10 +26,9 @@ Welcome to Swap Insight – a modern, feature-rich Flutter application that enab
 🔐 User Authentication
 Secure Login & Registration using Firebase Auth
 
-Persistent sessions with auto-login support
+Using Gmail for authentication
 
-Password reset functionality
-
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 🔄 Smart Item Swapping
 Users can list items they want to swap
 
@@ -38,6 +37,8 @@ Choose category: 🪑 Furniture, 🧸 Toys, 👕 Clothes, 📱 Electronics, and 
 Match with other users having items in similar categories
 
 One-click swap requests and approvals
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 👤 User Profile Page
 View and update user details
@@ -50,6 +51,8 @@ Upload profile picture (with Firebase Storage)
 🔐 Firebase Authentication for user accounts
 
 ☁️ Cloud Firestore for real-time item listing & swap tracking
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 🖼️ Firebase Storage for image uploads
 
