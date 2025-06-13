@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:http/http.dart' as http; // For Cloudinary API call
+import 'dart:convert';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
 
 class AddItemPage extends StatefulWidget {
   const AddItemPage({Key? key}) : super(key: key);
@@ -18,12 +22,13 @@ class _AddItemPageState extends State<AddItemPage> {
   final TextEditingController _manualLocationController =
       TextEditingController();
   String? _selectedCategory;
-  String? _selectedSubcategory;
   File? _selectedImage;
+  String? _uploadedImageUrl; // URL from Cloudinary
   String? _currentLocation;
+  bool _isLoading = false;
 
-  // Function to handle image selection
-  Future<void> _pickImage() async {
+  // Function to handle image selection and upload to Cloudinary
+  Future<void> _pickAndUploadImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image =
         await picker.pickImage(source: ImageSource.gallery); // From gallery
@@ -31,11 +36,47 @@ class _AddItemPageState extends State<AddItemPage> {
     if (image != null) {
       setState(() {
         _selectedImage = File(image.path);
+        _isLoading = true;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Photo uploaded successfully!')),
-      );
+      try {
+        final uploadResponse = await _uploadImageToCloudinary(File(image.path));
+        setState(() {
+          _uploadedImageUrl = uploadResponse;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Image uploaded successfully!')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error uploading image: $e')),
+        );
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // Cloudinary Upload
+  Future<String> _uploadImageToCloudinary(File image) async {
+    const String cloudName = 'dpq4c6slb';
+    const String uploadPreset = 'ojj9drz5';
+    final uri =
+        Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/upload');
+
+    final request = http.MultipartRequest('POST', uri)
+      ..fields['upload_preset'] = uploadPreset
+      ..files.add(await http.MultipartFile.fromPath('file', image.path));
+
+    final response = await request.send();
+    if (response.statusCode == 200) {
+      final responseData = jsonDecode(await response.stream.bytesToString());
+      return responseData['secure_url']; // URL of the uploaded image
+    } else {
+      throw Exception('Failed to upload image');
     }
   }
 
@@ -44,7 +85,6 @@ class _AddItemPageState extends State<AddItemPage> {
     bool serviceEnabled;
     LocationPermission permission;
 
-    // Check if location services are enabled
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -55,7 +95,6 @@ class _AddItemPageState extends State<AddItemPage> {
       return;
     }
 
-    // Check for location permissions
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -76,17 +115,18 @@ class _AddItemPageState extends State<AddItemPage> {
       return;
     }
 
-    // Fetch the current position
     Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high);
 
-    // Convert to a readable address
     try {
       List<Placemark> placemarks =
           await placemarkFromCoordinates(position.latitude, position.longitude);
       Placemark place = placemarks[0];
+
       setState(() {
         _currentLocation = "${place.locality}, ${place.administrativeArea}";
+        _manualLocationController.text =
+            _currentLocation!; // Directly update the text field
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -99,33 +139,74 @@ class _AddItemPageState extends State<AddItemPage> {
     }
   }
 
-  void _submitForm() {
+  // Function to save data
+  Future<void> _submitForm() async {
     if (_formKey.currentState?.validate() ?? false) {
-      // Handle form submission
-      String title = _titleController.text;
-      String category = _selectedCategory ?? "Uncategorized";
-      String subcategory = _selectedSubcategory ?? "No Subcategory";
-      String location =
-          _currentLocation ?? _manualLocationController.text.trim();
+      if (_selectedImage == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select an image')),
+        );
+        return;
+      }
 
-      // Simulate saving to a database
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Product Added: $title\nCategory: $category\nSubcategory: $subcategory\nLocation: $location'),
-        ),
-      );
+      if (_selectedCategory == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a category')),
+        );
+        return;
+      }
 
-      // Reset form
-      _titleController.clear();
-      _descriptionController.clear();
-      _manualLocationController.clear();
       setState(() {
-        _selectedImage = null;
-        _selectedCategory = null;
-        _selectedSubcategory = null;
-        _currentLocation = null;
+        _isLoading = true;
       });
+
+      try {
+        // Get the current user's ID
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User not logged in!')),
+          );
+          return;
+        }
+        final userId = user.uid; // Retrieve the user ID
+
+        // Add product data to Firestore
+        await FirebaseFirestore.instance.collection('products').add({
+          'title': _titleController.text,
+          'description': _descriptionController.text,
+          'category': _selectedCategory,
+          'location': _currentLocation ?? _manualLocationController.text.trim(),
+          'image_url': _uploadedImageUrl, // URL from Cloudinary
+          'user_id': userId, // Include the user ID
+          'created_at': DateTime.now(),
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Product added successfully!')),
+        );
+
+        // Clear the form after submission
+        _formKey.currentState?.reset();
+        setState(() {
+          _selectedImage = null;
+          _uploadedImageUrl = null;
+          _currentLocation = null;
+          _selectedCategory = null;
+        });
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error adding product: $e')),
+        );
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill all required fields')),
+      );
     }
   }
 
@@ -134,10 +215,14 @@ class _AddItemPageState extends State<AddItemPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Add Your Product'),
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.blueAccent,
+        elevation: 4.0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+        ),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20),
         child: SingleChildScrollView(
           child: Form(
             key: _formKey,
@@ -147,9 +232,18 @@ class _AddItemPageState extends State<AddItemPage> {
                 // Product Title
                 TextFormField(
                   controller: _titleController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Product Title',
-                    border: OutlineInputBorder(),
+                    labelStyle: TextStyle(color: Colors.blueAccent),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.blueAccent),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.blueAccent),
+                    ),
+                    contentPadding:
+                        EdgeInsets.symmetric(vertical: 15, horizontal: 12),
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -163,11 +257,19 @@ class _AddItemPageState extends State<AddItemPage> {
                 // Product Description
                 TextFormField(
                   controller: _descriptionController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Product Description',
-                    border: OutlineInputBorder(),
+                    labelStyle: TextStyle(color: Colors.blueAccent),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.blueAccent),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.blueAccent),
+                    ),
+                    contentPadding:
+                        EdgeInsets.symmetric(vertical: 15, horizontal: 12),
                   ),
-                  maxLines: 3,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please enter a description';
@@ -177,143 +279,97 @@ class _AddItemPageState extends State<AddItemPage> {
                 ),
                 const SizedBox(height: 20),
 
+                // Image Upload with Camera Icon
+                GestureDetector(
+                  onTap: _pickAndUploadImage,
+                  child: _selectedImage == null
+                      ? Center(
+                          child: Container(
+                            decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: Colors.blueAccent, width: 2)),
+                            padding: const EdgeInsets.all(20),
+                            child: Icon(Icons.camera_alt,
+                                color: Colors.blueAccent, size: 40),
+                          ),
+                        )
+                      : Image.file(
+                          _selectedImage!,
+                          width: double.infinity,
+                          height: 200,
+                          fit: BoxFit.cover,
+                        ),
+                ),
+                const SizedBox(height: 20),
+
                 // Category Dropdown
                 DropdownButtonFormField<String>(
                   value: _selectedCategory,
-                  decoration: const InputDecoration(
-                    labelText: 'Category',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: ['Electronics', 'Clothing', 'Books', 'Others']
-                      .map((category) {
-                    return DropdownMenuItem(
-                      value: category,
-                      child: Text(category),
-                    );
-                  }).toList(),
                   onChanged: (value) {
                     setState(() {
                       _selectedCategory = value;
                     });
                   },
-                  validator: (value) {
-                    if (value == null) {
-                      return 'Please select a category';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-
-                // Subcategory Dropdown
-                DropdownButtonFormField<String>(
-                  value: _selectedSubcategory,
-                  decoration: const InputDecoration(
-                    labelText: 'Subcategory',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: 'Category',
+                    labelStyle: TextStyle(color: Colors.blueAccent),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.blueAccent),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.blueAccent),
+                    ),
                   ),
-                  items:
-                      ['Mobile', 'Laptop', 'Novel', 'Shirt'].map((subcategory) {
-                    return DropdownMenuItem(
-                      value: subcategory,
-                      child: Text(subcategory),
+                  items: ['Electronics', 'Furniture', 'Clothes', 'Toys']
+                      .map<DropdownMenuItem<String>>((category) {
+                    return DropdownMenuItem<String>(
+                      value: category,
+                      child: Text(category),
                     );
                   }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedSubcategory = value;
-                    });
-                  },
                 ),
                 const SizedBox(height: 20),
 
-                // Image Picker
-                GestureDetector(
-                  onTap: _pickImage,
-                  child: Container(
-                    height: 150,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.grey),
-                    ),
-                    child: _selectedImage != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Image.file(
-                              _selectedImage!,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                            ),
-                          )
-                        : Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: const [
-                              Icon(
-                                Icons.add_photo_alternate,
-                                size: 50,
-                                color: Colors.grey,
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Tap to Add Image',
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ],
+                // Location TextBox
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _manualLocationController,
+                        decoration: InputDecoration(
+                          labelText: 'Location',
+                          labelStyle: TextStyle(color: Colors.blueAccent),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.blueAccent),
                           ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Location Picker
-                ElevatedButton.icon(
-                  onPressed: _fetchLocation,
-                  icon: const Icon(Icons.location_on),
-                  label: const Text('Use My Current Location'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                // Manual Location Input
-                TextFormField(
-                  controller: _manualLocationController,
-                  decoration: InputDecoration(
-                    labelText: 'Or Enter Location Manually',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Display Current Location
-                if (_currentLocation != null)
-                  Text(
-                    'Current Location: $_currentLocation',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Colors.black87,
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: Colors.blueAccent),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    IconButton(
+                      onPressed: _fetchLocation,
+                      icon: Icon(Icons.location_on, color: Colors.blueAccent),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 20),
 
                 // Submit Button
-                Center(
-                  child: ElevatedButton(
-                    onPressed: _submitForm,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 30, vertical: 15),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: const Text(
-                      'Add Product',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ElevatedButton(
+                  onPressed: _submitForm,
+                  child: _isLoading
+                      ? CircularProgressIndicator(color: Colors.white)
+                      : Text('Submit'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    padding: EdgeInsets.symmetric(vertical: 15, horizontal: 30),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),

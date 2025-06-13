@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:swapapp/pages/forgot_password.dart';
 import 'home_page.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -14,7 +15,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   int _currentPageIndex = 0;
   final PageController _pageController = PageController();
-  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
@@ -23,69 +24,96 @@ class _LoginPageState extends State<LoginPage> {
   bool _passwordVisible = false;
   bool _confirmPasswordVisible = false;
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  /// Hash password using SHA-256
+  String _hashPassword(String password) {
+    return sha256.convert(utf8.encode(password)).toString();
+  }
+
+  /// Login with email and password
   Future<void> _login() async {
     try {
-      QuerySnapshot querySnapshot = await _firestore
-          .collection('users')
-          .where('phone', isEqualTo: _phoneController.text.trim())
-          .get();
+      final String email = _emailController.text.trim();
+      final String password = _passwordController.text.trim();
 
-      if (querySnapshot.docs.isEmpty) {
-        throw Exception('Phone number not registered.');
+      if (email.isEmpty || password.isEmpty) {
+        throw Exception('Email and password cannot be empty.');
       }
 
-      String email = querySnapshot.docs.first.get('email');
+      // Log in with Firebase Authentication using email/password
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
-        password: _passwordController.text.trim(),
+        password: password,
       );
 
       if (userCredential.user != null) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomePage()),
-        );
+        // Fetch the user's UID
+        final String uid = userCredential.user!.uid;
+
+        // Fetch the profile data from Firestore using the UID
+        DocumentSnapshot userProfile =
+            await _firestore.collection('profiles').doc(uid).get();
+        if (userProfile.exists) {
+          // Profile found, navigate to the HomePage
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const HomePage()),
+          );
+        } else {
+          throw Exception('User profile not found.');
+        }
+      } else {
+        throw Exception('Invalid login credentials.');
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Login failed: $e')),
+        SnackBar(content: Text('Login failed: ${e.toString()}')),
       );
     }
   }
 
+  /// Sign up with email and password
   Future<void> _signUp() async {
     try {
-      if (_passwordController.text != _confirmPasswordController.text) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Passwords do not match')),
-        );
-        return;
+      final String email = _emailController.text.trim();
+      final String password = _passwordController.text.trim();
+      final String confirmPassword = _confirmPasswordController.text.trim();
+
+      if (email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
+        throw Exception('All fields are required.');
       }
 
-      String fakeEmail = "${_phoneController.text.trim()}@example.com";
+      if (password != confirmPassword) {
+        throw Exception('Passwords do not match.');
+      }
 
+      // Create a user with Firebase Authentication
       UserCredential userCredential =
           await _auth.createUserWithEmailAndPassword(
-        email: fakeEmail,
-        password: _passwordController.text.trim(),
+        email: email,
+        password: password,
       );
 
-      if (userCredential.user != null) {
-        await _firestore.collection('users').doc(userCredential.user!.uid).set({
-          'email': fakeEmail,
-          'phone': _phoneController.text.trim(),
-        });
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomePage()),
-        );
-      }
+      // If registration is successful, save user profile in Firestore
+      final String uid = userCredential.user!.uid;
+
+      // Save the user profile data to Firestore
+      await _firestore.collection('profiles').doc(uid).set({
+        'email': email,
+        'profileCreatedAt': Timestamp.now(),
+        'uid': uid, // Save the UID
+      });
+
+      // Navigate to HomePage after successful registration
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HomePage()),
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sign-Up failed: $e')),
+        SnackBar(content: Text('Sign-Up failed: ${e.toString()}')),
       );
     }
   }
@@ -195,42 +223,9 @@ class _LoginPageState extends State<LoginPage> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        _buildTextField(_phoneController, 'Phone Number', Icons.phone),
+        _buildTextField(_emailController, 'Email', Icons.email),
         const SizedBox(height: 20.0),
         _buildPasswordTextField(_passwordController, 'Password', Icons.lock),
-        const SizedBox(height: 10.0),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Checkbox(
-                  value: _rememberMe,
-                  onChanged: (value) {
-                    setState(() {
-                      _rememberMe = value!;
-                    });
-                  },
-                ),
-                const Text("Remember Me",
-                    style: TextStyle(color: Colors.black87)),
-              ],
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const ForgotPasswordPage()),
-                );
-              },
-              child: const Text(
-                'Forgot password?',
-                style: TextStyle(color: Color(0xFFE53935), fontSize: 14),
-              ),
-            ),
-          ],
-        ),
         const SizedBox(height: 20.0),
         _buildButton('Login', isSignUp: false),
       ],
@@ -241,7 +236,7 @@ class _LoginPageState extends State<LoginPage> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
-        _buildTextField(_phoneController, 'Phone Number', Icons.phone),
+        _buildTextField(_emailController, 'Email', Icons.email),
         const SizedBox(height: 20.0),
         _buildPasswordTextField(_passwordController, 'Password', Icons.lock),
         const SizedBox(height: 20.0),
@@ -254,11 +249,9 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Widget _buildTextField(
-      TextEditingController controller, String hintText, IconData icon,
-      {bool isPassword = false}) {
+      TextEditingController controller, String hintText, IconData icon) {
     return TextField(
       controller: controller,
-      obscureText: isPassword ? !_passwordVisible : false,
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.grey),
         hintText: hintText,
@@ -278,9 +271,7 @@ class _LoginPageState extends State<LoginPage> {
       TextEditingController controller, String hintText, IconData icon) {
     return TextField(
       controller: controller,
-      obscureText: controller == _passwordController
-          ? !_passwordVisible
-          : !_confirmPasswordVisible,
+      obscureText: !_passwordVisible,
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: Colors.grey),
         hintText: hintText,
@@ -293,20 +284,12 @@ class _LoginPageState extends State<LoginPage> {
         ),
         suffixIcon: IconButton(
           icon: Icon(
-            controller == _passwordController
-                ? (_passwordVisible ? Icons.visibility : Icons.visibility_off)
-                : (_confirmPasswordVisible
-                    ? Icons.visibility
-                    : Icons.visibility_off),
+            _passwordVisible ? Icons.visibility : Icons.visibility_off,
             color: Colors.grey,
           ),
           onPressed: () {
             setState(() {
-              if (controller == _passwordController) {
-                _passwordVisible = !_passwordVisible;
-              } else {
-                _confirmPasswordVisible = !_confirmPasswordVisible;
-              }
+              _passwordVisible = !_passwordVisible;
             });
           },
         ),
@@ -317,9 +300,15 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _buildButton(String text, {required bool isSignUp}) {
     return ElevatedButton(
-      onPressed: isSignUp ? _signUp : _login,
+      onPressed: () {
+        if (isSignUp) {
+          _signUp();
+        } else {
+          _login();
+        }
+      },
       style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 14.0),
+        padding: const EdgeInsets.symmetric(vertical: 14),
         backgroundColor: const Color(0xFF0071bc),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(30.0),
@@ -328,9 +317,9 @@ class _LoginPageState extends State<LoginPage> {
       child: Text(
         text,
         style: const TextStyle(
-          color: Colors.white,
           fontSize: 18,
           fontWeight: FontWeight.bold,
+          color: Colors.white,
         ),
       ),
     );

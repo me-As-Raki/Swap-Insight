@@ -9,81 +9,75 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        // Exit the app directly when back button is pressed
-        return true; // Returning true ensures the app is closed
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: Color(0xFF2874F0), // Flipkart blue color
-          automaticallyImplyLeading: false,
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 20,
-                    backgroundImage:
-                        AssetImage('assets/images/logo.jpg'), // App logo
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'SwapInSight',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_none,
-                        color: Colors.white),
-                    onPressed: () {
-                      // Navigate to the Notification Page
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const NotificationPage()),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.account_circle, color: Colors.white),
-                    onPressed: () {
-                      // Navigate to the Profile Page
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const ProfilePage()),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Color(0xFF2874F0), // Flipkart blue color
+        automaticallyImplyLeading: false,
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildSlidingImages(),
-            const SizedBox(height: 20),
-            _buildSectionHeading('Trending Items'),
-            const SizedBox(height: 10),
-            Expanded(
-              child: _buildTrendingItemsLayout(),
+            Row(
+              children: [
+                const CircleAvatar(
+                  radius: 20,
+                  backgroundImage:
+                      AssetImage('assets/images/logo.jpg'), // App logo
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'SwapInSight',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
-            _buildBottomButtons(context),
+            Row(
+              children: [
+                IconButton(
+                  icon:
+                      const Icon(Icons.notifications_none, color: Colors.white),
+                  onPressed: () {
+                    // Navigate to the Notification Page
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const NotificationPage()),
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.account_circle, color: Colors.white),
+                  onPressed: () {
+                    // Navigate to the Profile Page
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const ProfilePage()),
+                    );
+                  },
+                ),
+              ],
+            ),
           ],
         ),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSlidingImages(),
+          const SizedBox(height: 20),
+          _buildSectionHeading('Trending Items'),
+          const SizedBox(height: 10),
+          Expanded(
+            child: _buildTrendingItemsLayout(),
+          ),
+          const SizedBox(height: 20),
+          _buildBottomButtons(context),
+        ],
       ),
     );
   }

@@ -53,6 +53,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('OTP sent to your phone')),
           );
+          _showOTPInMessageBox(); // Display OTP in a message box
         },
         codeAutoRetrievalTimeout: (String verificationId) {
           setState(() {
@@ -68,6 +69,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         SnackBar(content: Text('Failed to send OTP: $e')),
       );
     }
+  }
+
+  // Display OTP in a message box (Snackbar)
+  void _showOTPInMessageBox() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('OTP: $_verificationId')),
+    );
   }
 
   // Reset the password using OTP and new password

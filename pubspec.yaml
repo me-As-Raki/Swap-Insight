@@ -20,6 +20,12 @@ dependencies:
   cloud_firestore: ^5.5.0
   google_sign_in: ^6.2.2
   firebase_auth_platform_interface: ^7.4.9
+  firebase_storage: ^12.3.6
+  mime: ^2.0.0
+  http: ^1.2.2
+  firebase_messaging: ^15.1.5
+  cloud_functions: ^5.1.5
+  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:
@@ -47,6 +53,10 @@ flutter:
     - assets/images/image13.png
     - assets/images/image14.png
     - assets/images/image15.png
+    - assets/photo1.png
+    - assets/photo2.png
+    - assets/photo3.png
+    - assets/photo4.png
 
   # Optionally, add custom fonts if needed
   # fonts:
