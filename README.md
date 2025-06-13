@@ -1,5 +1,5 @@
-<<<<<<< HEAD
-# swapapp
+
+# Swap App
 
 A new Flutter project.
 
@@ -16,9 +16,8 @@ For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 =======
+
 # Swap-Insight
-🔁 Swap App – Simple &amp; Intuitive Value Swapper 👋 Welcome to Swap App, a minimal yet powerful ⚡ application that allows users to effortlessly 🔄 swap values between two input fields ✏️ with a single tap 👆 or click 🖱️.
->>>>>>> 19f36265a6550f78ebc18f296f96fadf54df9ff4
 
 🔁 Swap Insight – Flutter App for Smart Swapping
 Welcome to Swap Insight – a modern, feature-rich Flutter application that enables users to swap items within categories like furniture, toys, clothing, electronics, and more! Built with ❤️ using Flutter and powered by Firebase, this app delivers smooth user experience and real-time data sync across devices.
