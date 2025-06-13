@@ -60,3 +60,10 @@ Upload profile picture (with Firebase Storage)
 Built with Flutter’s Material Design
 
 Responsive layout across devices
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+## 📲 Download APK
+
+[Click here to download SwapInsight.apk](https://drive.google.com/file/d/1JbocndHNbS-z-sKtiIBRRj11ZLH5U1Tz/view?usp=sharing)
+
